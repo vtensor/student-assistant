@@ -74,40 +74,39 @@ The LLM is also used for two secondary tasks: extracting long-term memory candid
 ## Architecture
 
 ```
-                                  Browser
-                                     |
-                                     | HTTPS + JWT
-                                     v
-+--------------------------------------------------------------+
-|                       sa_app  (one container)                |
-|                                                              |
-|   :8501  Streamlit UI  -- httpx --> http://localhost:8000    |
-|                                                              |
-|   :8000  FastAPI backend                                     |
-|   middleware:   request_id + endpoint binding                |
-|                                                              |
-|   /auth/*   --> Identity  --> Mongo.auth + students          |
-|   /profile  --> Data      --> Mongo + Redis (cache)          |
-|   /chat     --> Agent     --> LangGraph + Tools (blocking)   |
-|   /achat    --> Agent     --> LangGraph + Tools (SSE stream) |
-|   /metrics  --> Prometheus exposition                        |
-|                                                              |
-|   shared:   Cache (Redis facade)                             |
-|             RateLimiter (Lua token bucket)                   |
-|             PII (regex redactor)                             |
-|             Memory (short-term + long-term)                  |
-|             VectorService (Weaviate + embed)                 |
-|             Eval (rules + sampled judge)                     |
-+-----+----------------+--------------------+------------------+
-      |                |                    |
-      v                v                    v
+                       +----------------------+
+                       |   Streamlit UI       |
+                       |   :8501 (browser)    |
+                       +----------+-----------+
+                                  |  HTTPS + JWT
+                                  v
++---------------------------------------------------------+
+|                  FastAPI (sa_app :8000)                 |
+|                                                         |
+|   middleware:    request_id + endpoint binding          |
+|                                                         |
+|   /auth/*    --> Identity  --> Mongo.auth + students    |
+|   /profile   --> Data      --> Mongo + Redis (cache)    |
+|   /chat      --> Agent     --> LangGraph + Tools        |
+|   /achat     --> Agent     --> SSE stream               |
+|   /metrics   --> Prometheus exposition                  |
+|                                                         |
+|   shared:        Cache (Redis facade)                   |
+|                  RateLimiter (Lua token bucket)         |
+|                  PII (regex redactor)                   |
+|                  Memory (short-term + long-term)        |
+|                  VectorService (Weaviate + embed)       |
+|                  Eval (rules + sampled judge)           |
++----+----------------+--------------------+--------------+
+     |                |                    |
+     v                v                    v
 +----------+   +-------------+   +-------------------+
 | MongoDB  |   | Redis       |   | Weaviate          |
 | :27017   |   | :6379       |   | :8080 + :50051    |
 +----------+   +-------------+   +-------------------+
 ```
 
-All four services live in a single `docker-compose.yml`: three stateful backing services (Mongo, Redis, Weaviate) plus one combined application image that runs the FastAPI backend on port 8000 and the Streamlit frontend on port 8501 inside the same container. Streamlit talks to the backend over `localhost:8000`.
+The diagram above is the logical architecture: Streamlit is the UI layer, FastAPI is the application layer, and Mongo / Redis / Weaviate are the stateful stores. `docker-compose.yml` ships these as four services: Mongo, Redis, Weaviate, and one combined `sa_app` image that runs both the FastAPI backend (port 8000) and Streamlit (port 8501) inside the same container. Streamlit reaches the backend over `localhost:8000`.
 
 ---
 
@@ -1081,4 +1080,3 @@ A **search tool** is planned that calls a web search API restricted to a curated
 ### Output PII masking under streaming
 
 The current streaming design means there is no post-hoc opportunity to mask PII in the response: tokens are already on the wire. If output masking becomes a hard requirement, the options are (a) buffer the full response server-side before forwarding (loses the streaming experience), or (b) run a token-level streaming PII detector that holds back suspicious chunks until the surrounding context confirms or rejects a hit. Either is a meaningful redesign, not a flag flip.
----
