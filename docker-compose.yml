@@ -1,0 +1,60 @@
+services:
+  mongo:
+    image: mongo:7
+    container_name: sa_mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  redis:
+    image: redis:7-alpine
+    container_name: sa_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  weaviate:
+    image: cr.weaviate.io/semitechnologies/weaviate:1.27.0
+    container_name: sa_weaviate
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+      - "50051:50051"
+    environment:
+      QUERY_DEFAULTS_LIMIT: "25"
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
+      PERSISTENCE_DATA_PATH: "/var/lib/weaviate"
+      DEFAULT_VECTORIZER_MODULE: "none"
+      ENABLE_MODULES: ""
+      CLUSTER_HOSTNAME: "node1"
+    volumes:
+      - weaviate_data:/var/lib/weaviate
+
+  # Single app image that runs the FastAPI backend on :8000 and the
+  # Streamlit frontend on :8501 in the same container. Streamlit talks
+  # to the backend via localhost:8000 (default value of BACKEND_URL in
+  # streamlit_app.py).
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sa_app
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      - mongo
+      - redis
+      - weaviate
+    ports:
+      - "8000:8000"   # FastAPI
+      - "8501:8501"   # Streamlit
+
+volumes:
+  mongo_data:
+  redis_data:
+  weaviate_data:
