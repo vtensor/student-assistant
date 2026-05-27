@@ -9,10 +9,6 @@ doc.txt
 *.key
 
 
-CLAUDE.md
-instruction.md
-.claude/
-
 # Local-only sample / seed data (not shipped to public repo)
 students.json
 performance_history.json
